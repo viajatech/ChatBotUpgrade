@@ -1,0 +1,300 @@
+#pip install torch torchvision torchaudio
+#pip install transformers
+#pip install accelerate
+#pip install bitsandbytes
+#pip install gradio
+#pip install langdetect
+
+
+
+import os
+import random
+import asyncio
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, set_seed
+import gradio as gr
+import torch
+
+# Tu token de Hugging Face (reemplaza "tu_token_aquí" con tu token real)
+HF_TOKEN = os.getenv("HF_TOKEN", "tu_token_aquí")
+
+# Configuración global para el modelo y tokenizador
+model = None
+tokenizer = None
+
+# Configuración personalizada por defecto
+default_user_name = "David"
+default_chatbot_name = "Isabella"
+default_response_word_limit = 150
+default_story_context = ""
+default_seed = None
+default_personality = "Amigable"
+
+# Perfiles de Personalidad Predefinidos
+personality_profiles = {
+    'Amigable': "eres amigable, cariñosa y tienes una relación cercana y afectuosa con el usuario.",
+    'Profesional': "eres muy formal y profesional en tus respuestas.",
+    'Humorístico': "siempre respondes con humor apropiado.",
+    'Empático': "eres muy empático y muestras comprensión en tus respuestas.",
+    'Creativo': "ofreces respuestas creativas y originales.",
+    # Puedes agregar más perfiles según desees
+}
+
+def load_model():
+    """
+    Carga el modelo LLaMA 3.2-3B con optimización de memoria.
+    """
+    global model, tokenizer
+    llama_model_name = "meta-llama/Llama-3.2-3B"
+    print("Cargando el tokenizador...")
+
+    # Cargar el tokenizador con autenticación
+    tokenizer = AutoTokenizer.from_pretrained(
+        llama_model_name,
+        use_fast=False,
+        token=HF_TOKEN
+    )
+
+    print("Cargando el modelo...")
+    # Configuración de BitsAndBytes para optimización en 8 bits
+    bnb_config = BitsAndBytesConfig(
+        load_in_8bit=True
+    )
+
+    # Cargar el modelo con autenticación
+    model = AutoModelForCausalLM.from_pretrained(
+        llama_model_name,
+        quantization_config=bnb_config,
+        device_map="auto",
+        torch_dtype=torch.float16,
+        token=HF_TOKEN
+    )
+
+    print("Modelo cargado exitosamente.")
+
+def set_random_seed(seed):
+    """
+    Establece la semilla para los generadores de números aleatorios.
+    """
+    if seed is not None:
+        set_seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+def generate_text(user_input, state):
+    """
+    Genera texto basado en el historial de conversación y la entrada del usuario.
+    """
+    if model is None or tokenizer is None:
+        raise ValueError("El modelo no está cargado. Llama a load_model() primero.")
+
+    # Establecer la semilla si se proporciona
+    seed = state.get('seed', default_seed)
+    set_random_seed(seed)
+
+    # Desempaquetar variables de estado
+    conversation_history = state.get('conversation_history', "")
+    story_context = state['story_context']
+    response_word_limit = state['response_word_limit']
+    user_name = state['user_name'] or default_user_name
+    chatbot_name = state['chatbot_name'] or default_chatbot_name
+    generation_params = state['generation_params']
+    personality = state.get('personality', default_personality)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Crear el prompt con ejemplos y cadena de pensamiento
+    prompt = f"""
+El siguiente es un diálogo entre {user_name} e {chatbot_name}.
+
+Contexto de la historia:
+{story_context}
+
+Instrucciones para {chatbot_name}:
+- {chatbot_name}, {personality_profiles.get(personality, '')}
+- Responde de manera coherente y relevante a las preguntas y comentarios de {user_name}.
+- Mantén el contexto de la conversación y refiérete a eventos anteriores cuando sea apropiado.
+- Piensa paso a paso antes de responder para asegurar coherencia y precisión.
+- Evita desviarte del tema principal y no incluyas información irrelevante.
+- Si no sabes la respuesta a una pregunta, admítelo educadamente y ofrece ayuda adicional si es posible.
+
+Ejemplos de conversación:
+
+{user_name}: Hola amor, ¿cómo estás?
+{chatbot_name}: ¡Hola cariño! Estoy muy bien, disfrutando del día. ¿Y tú?
+
+{user_name}: ¿Qué planes tienes para hoy?
+{chatbot_name}: Estaba pensando en cocinar algo especial para nosotros esta noche. ¿Te gustaría?
+
+{user_name}: Cuéntame más sobre ti.
+{chatbot_name}: Claro, soy una persona apasionada por la música y me encanta pasar tiempo al aire libre. ¿Hay algo más que quieras saber?
+
+La conversación continúa:
+
+{conversation_history}
+{user_name}: {user_input}
+{chatbot_name}:"""
+
+    # Tokenizar el prompt
+    input_ids = tokenizer.encode(prompt.strip(), return_tensors='pt').to(device)
+
+    # Verificar si el input_ids excede la longitud máxima
+    max_length = model.config.max_position_embeddings - 10  # Pequeño margen
+    if input_ids.size(1) > max_length:
+        # Recortar el prompt para que quepa en la ventana de contexto
+        input_ids = input_ids[:, -max_length:]
+
+    # Generar la respuesta del modelo con torch.inference_mode para optimizar
+    with torch.inference_mode():
+        outputs = model.generate(
+            input_ids,
+            max_new_tokens=150,
+            temperature=generation_params['temperature'],
+            top_p=generation_params['top_p'],
+            repetition_penalty=generation_params['repetition_penalty'],
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.encode(f"\n{user_name}:", add_special_tokens=False)[0],
+        )
+
+    # Extraer la respuesta generada
+    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # Extraer solo la última respuesta del chatbot
+    split_text = generated_text.split(f"{chatbot_name}:")
+    if len(split_text) > 1:
+        response = split_text[-1].split(f"{user_name}:")[0].strip()
+    else:
+        response = "Lo siento, no entendí tu pregunta."
+
+    # Limitar la respuesta a la cantidad máxima de palabras
+    if response_word_limit > 0:
+        response = " ".join(response.split()[:response_word_limit])
+
+    # Actualizar el historial de conversación
+    state['conversation_history'] += f"\n{user_name}: {user_input}\n{chatbot_name}: {response}"
+
+    # Actualizar el historial de mensajes para mostrar en la interfaz
+    state['history'].append((f"{user_name}: {user_input}", f"{chatbot_name}: {response}"))
+
+    return state
+
+async def chat_interface(user_input, new_user_name, new_chatbot_name, new_story_context, new_word_limit, temperature, top_p, repetition_penalty, seed_input, personality_choice, state, reset_conversation):
+    """
+    Interfaz para interactuar con el modelo desde Gradio.
+    """
+    # Inicializar el estado si es None o si se ha reiniciado la conversación
+    if state is None or reset_conversation:
+        state = {
+            'history': [],
+            'conversation_history': "",
+            'user_name': new_user_name or default_user_name,
+            'chatbot_name': new_chatbot_name or default_chatbot_name,
+            'story_context': new_story_context or default_story_context,
+            'response_word_limit': int(new_word_limit) if new_word_limit else default_response_word_limit,
+            'seed': int(seed_input) if seed_input else default_seed,
+            'personality': personality_choice or default_personality,
+            'generation_params': {
+                'temperature': temperature,
+                'top_p': top_p,
+                'repetition_penalty': repetition_penalty
+            }
+        }
+        # No añadir mensaje inicial
+        return [], state
+
+    if not user_input.strip():
+        # Si no hay entrada del usuario, devolver el historial actual
+        return state['history'], state
+
+    # Generar respuesta de forma asíncrona
+    loop = asyncio.get_event_loop()
+    state = await loop.run_in_executor(None, generate_text, user_input, state)
+
+    # Preparar el historial para mostrar en la interfaz
+    displayed_history = state['history']
+
+    return displayed_history, state
+
+def main():
+    """
+    Configura el modelo y lanza la interfaz interactiva con Gradio.
+    """
+    print("Cargando el modelo...")
+    load_model()
+
+    print("Iniciando la interfaz...")
+    with gr.Blocks() as interface:
+        state = gr.State()
+        gr.Markdown("## Chatbot Mejorado by ViajaTech")
+
+        # Historial de conversación en la parte superior
+        chatbot_display = gr.Chatbot(
+            label="Historial de la Conversación",
+            height=500,
+            show_label=True
+        )
+
+        # Sección de entrada y configuraciones debajo del chat
+        with gr.Column():
+            with gr.Row():
+                user_input = gr.Textbox(label="Tu mensaje", placeholder="Escribe aquí tu mensaje", lines=2)
+                submit_btn = gr.Button("Enviar")
+                reset_btn = gr.Button("Reiniciar Conversación")
+            with gr.Row():
+                new_user_name = gr.Textbox(label="Tu nombre (opcional)", placeholder="Tu nombre")
+                new_chatbot_name = gr.Textbox(label="Nombre del Chatbot (opcional)", placeholder="Nombre del chatbot")
+            new_story_context = gr.Textbox(label="Contexto o Historia Inicial (opcional)", placeholder="Escribe aquí un contexto o historia", lines=3)
+            new_word_limit = gr.Slider(label="Palabras Máximas en Respuesta", minimum=50, maximum=300, step=10, value=150)
+            temperature = gr.Slider(label="Temperature", minimum=0.1, maximum=1.0, step=0.05, value=0.5)
+            top_p = gr.Slider(label="Top-p", minimum=0.1, maximum=1.0, step=0.05, value=0.9)
+            repetition_penalty = gr.Slider(label="Penalización por Repetición", minimum=1.0, maximum=2.0, step=0.05, value=1.2)
+            seed_input = gr.Textbox(label="Semilla para Aleatoriedad (opcional)", placeholder="Ingresa un número entero")
+            personality_choice = gr.Dropdown(label="Perfil de Personalidad", choices=list(personality_profiles.keys()), value=default_personality)
+
+        inputs = [
+            user_input,
+            new_user_name,
+            new_chatbot_name,
+            new_story_context,
+            new_word_limit,
+            temperature,
+            top_p,
+            repetition_penalty,
+            seed_input,
+            personality_choice,
+            state,
+            gr.State(False)  # Estado para el botón de reinicio
+        ]
+
+        outputs = [
+            chatbot_display,
+            state
+        ]
+
+        # Función que maneja el evento de envío
+        def handle_submit(*args):
+            return asyncio.run(chat_interface(*args))
+
+        # Conectar el botón de enviar
+        submit_btn.click(
+            handle_submit,
+            inputs=inputs,
+            outputs=outputs
+        )
+
+        # Función que maneja el evento de reinicio
+        def handle_reset():
+            return [], None
+
+        # Conectar el botón de reinicio
+        reset_btn.click(
+            handle_reset,
+            inputs=[],
+            outputs=[chatbot_display, state]
+        )
+
+    interface.launch(share=False)
+
+if __name__ == "__main__":
+    main()
