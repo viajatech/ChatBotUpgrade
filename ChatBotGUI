@@ -1,3 +1,10 @@
+#by David Ruiz (@viajatech)
+
+#Si utilizas mi script recuerda dar créditos (Apache 2.0) 
+#Se agradece tu estrellita en el repo de github
+#https://github.com/viajatech
+
+
 #pip install torch torchvision torchaudio
 #pip install transformers
 #pip install accelerate
