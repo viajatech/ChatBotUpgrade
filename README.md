@@ -16,6 +16,8 @@ Requisitos de instalación;
 
 5.Correr el script con Python, puedes usar Pycharm o el IDE de tu preferencia.
 
+Opción Alterna; Puedes descargar los modelos directamente en; https://huggingface.co/meta-llama/Llama-3.2-3B/tree/main
+
 ----
 Se ejecuta de forma local con Gradio.
 ----
