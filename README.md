@@ -16,3 +16,4 @@ Se ejecuta de forma local con Gradio.
 Nota; No se aceptan revisiones/actualizaciones del script.
 ----
 Favor de dar créditos y mencionar este repositorio si lo utilizas para fines comerciales o personales.
+----
