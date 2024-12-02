@@ -5,8 +5,8 @@ Creado con la tecnología de Meta; https://huggingface.co/meta-llama/Llama-3.2-3
 Requisitos Mínimos; 4GB VRAM, 12/13Gb en RAM,CPU; 4 núcleos.
 ----
 Requisitos de instalación;
-1.ir a https://huggingface.co/meta-llama/Llama-3.2-3B 
 
+1.ir a https://huggingface.co/meta-llama/Llama-3.2-3B 
 2.Solicitar acceso a Meta
 
 3.Generar Token "Read"
