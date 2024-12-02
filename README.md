@@ -8,9 +8,9 @@ Requisitos de instalación;
 ----
 1.ir a https://huggingface.co/meta-llama/Llama-3.2-3B 
 
-2.Solicitar acceso a Meta
+2.Solicitar acceso a Meta (Verificar en tu e-mail si fuiste aprobado).
 
-3.Generar Token "Read"
+3.Generar Token "Read" en; https://huggingface.co/settings/tokens
 
 4.Copiar y pegar el token en la sección; "tu_token_aquí" de mi script
 
