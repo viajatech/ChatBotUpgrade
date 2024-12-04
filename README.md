@@ -27,3 +27,6 @@ Favor de dar créditos y mencionar este repositorio si lo utilizas para fines co
 ----
 ![](https://github.com/viajatech/ChatBotUpgrade/blob/main/Screen%20shot%20request%20status%20meta.png).
 ----
+![](https://github.com/viajatech/ChatBotUpgrade/blob/main/Access%20Tokens%20Read%20Screen%20Shot%20.png).
+----
+
