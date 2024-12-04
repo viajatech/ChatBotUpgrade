@@ -8,7 +8,7 @@ Requisitos de instalación;
 ----
 1.ir a https://huggingface.co/meta-llama/Llama-3.2-3B 
 
-2.Solicitar acceso a Meta (Verificar en tu e-mail si fuiste aprobado).
+2.Solicitar acceso a Meta (Verificar en tu e-mail si fuiste aprobado;https://huggingface.co/settings/gated-repos)
 
 3.Generar Token "Read" en; https://huggingface.co/settings/tokens
 
